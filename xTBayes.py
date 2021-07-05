@@ -72,20 +72,36 @@ def failed_shot_count_matrix(df, failed_shot_events, event_column_name, l=18, w 
     return miss_matrix
 
 
-def bayes_p_score_if_shoot(prior_successful_shot_matrix, data_successful_shot_matrix, prior_failed_shot_matrix, data_failed_shot_matrix):
+def bayes_p_score_if_shoot(prior_successful_shot_matrix, data_successful_shot_matrix, prior_failed_shot_matrix, data_failed_shot_matrix, use_synthetic = 0, df_synthetic = None):
     """
+    If synthetic NOT used:
     Takes in the events dataframe and extracts counts of shots and goals
-
     Those counts are then used to calculate the expected goals (xG) per zone
-
-    This is a highly simplistic approach to calculating xG - sophistication can surely be added here?
-
     Outputs an M x N matrix of xG
+
+    If synthetic shots used as ANOTHER prior:
+    We combine synthetic and real shots to produce an xG grid where the posterior contains a prior from the previous data, as well as a prior from the synthetic shots, and the new data.
     """
 
-    posterior_successful_shots = prior_successful_shot_matrix + data_successful_shot_matrix
-    posterior_failed_shots = prior_failed_shot_matrix + data_failed_shot_matrix
-    posterior_total_shots = posterior_successful_shots + posterior_failed_shots
+    # if we're not using synthetic shot counts to deal with outliers
+    if use_synthetic == 0:
+        posterior_successful_shots = prior_successful_shot_matrix + data_successful_shot_matrix
+        posterior_failed_shots = prior_failed_shot_matrix + data_failed_shot_matrix
+        posterior_total_shots = posterior_successful_shots + posterior_failed_shots
+
+    # elif you're using synthetic counts
+    else:
+        
+        # querying synthetic shot dataframe to produce synthetic goal dataframe, and calculating synthetic success and failures matrix
+        df_synthetic_successful_shots = df_synthetic.loc[df_synthetic['goal'] == 1].copy()
+        df_synthetic_failed_shots = df_synthetic.loc[df_synthetic['goal'] == 0].copy()
+        synthetic_successful_shot_matrix = xT.count(df_synthetic_successful_shots.x1_m, df_synthetic_successful_shots.y1_m, l, w, pitch_length, pitch_width)
+        synthetic_failed_shot_matrix = xT.count(df_synthetic_failed_shots.x1_m, df_synthetic_failed_shots.y1_m, l, w, pitch_length, pitch_width)
+
+        # now combining the real (prior and data) and synthetic matrices
+        posterior_successful_shots = prior_successful_shot_matrix + data_successful_shot_matrix + synthetic_successful_shot_matrix
+        posterior_failed_shots = prior_failed_shot_matrix + data_failed_shot_matrix + synthetic_failed_shot_matrix
+        posterior_total_shots = posterior_successful_shots + posterior_failed_shots
 
     return xT.safe_divide(posterior_successful_shots, posterior_total_shots)
 
