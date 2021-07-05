@@ -96,23 +96,42 @@ def safe_divide(a, b):
 
 
 
-def p_score_if_shoot(df, successful_shot_events, failed_shot_events, event_column_name, l = 18, w = 12, pitch_length = 105.0, pitch_width = 68.0):
+def p_score_if_shoot(df, successful_shot_events, failed_shot_events, event_column_name, l = 18, w = 12, pitch_length = 105.0, pitch_width = 68.0, use_synthetic = 0, df_synthetic = None):
     """
     Takes in the events dataframe and extracts counts of shots and goals
-
     Those counts are then used to calculate the expected goals (xG) per zone
-
-    This is a highly simplistic approach to calculating xG - sophistication can surely be added here?
 
     Outputs an M x N matrix of xG
     """
+
     all_shot_events = successful_shot_events + failed_shot_events
 
     df_shots = df.loc[df[event_column_name].isin(all_shot_events)]
     df_goals = df.loc[df[event_column_name].isin(successful_shot_events)]
 
-    shot_matrix = count(df_shots.x1_m, df_shots.y1_m, l, w, pitch_length, pitch_width)
-    goal_matrix = count(df_goals.x1_m, df_goals.y1_m, l, w, pitch_length, pitch_width)
+    # if we're not using synthetic shot counts to deal with outliers
+    if use_synthetic == 0:
+
+        shot_matrix = count(df_shots.x1_m, df_shots.y1_m, l, w, pitch_length, pitch_width)
+        goal_matrix = count(df_goals.x1_m, df_goals.y1_m, l, w, pitch_length, pitch_width)
+
+    # elif you're using synthetic counts
+    else:
+
+        # calculation of real shot and goal count matrices as before
+        real_shot_matrix = count(df_shots.x1_m, df_shots.y1_m, l, w, pitch_length, pitch_width)
+        real_goal_matrix = count(df_goals.x1_m, df_goals.y1_m, l, w, pitch_length, pitch_width)
+
+        # now counting the synthetic shots
+        synthetic_shot_matrix = count(df_synthetic.x1_m, df_synthetic.y1_m, l, w, pitch_length, pitch_width)
+
+        # querying synthetic shot dataframe to produce synthetic goal dataframe, and calculating synthetic goal matrix
+        df_synthetic_goals = df_synthetic.loc[df_synthetic['goal'] == 1].copy()
+        synthetic_goal_matrix = count(df_synthetic_goals.x1_m, df_synthetic_goals.y1_m, l, w, pitch_length, pitch_width)
+
+        # and now combining the real and synthetic matrices
+        shot_matrix = real_shot_matrix + synthetic_shot_matrix
+        goal_matrix = real_goal_matrix + synthetic_goal_matrix
 
     return safe_divide(goal_matrix, shot_matrix)
 
@@ -217,8 +236,8 @@ def move_transition_matrix(df, successful_pass_events, failed_pass_events, succe
 
 
 
-## TODO: put the loops in your own code
-def xT_surface(df, successful_shot_events, failed_shot_events, successful_pass_events, failed_pass_events, successful_dribble_events, failed_dribble_events, event_column_name, l=18, w=12, pitch_length=105, pitch_width=68):
+## TODO: transform iterative dynamic programming approach into vector / matrix equation
+def xT_surface(df, successful_shot_events, failed_shot_events, successful_pass_events, failed_pass_events, successful_dribble_events, failed_dribble_events, event_column_name, l=18, w=12, pitch_length=105, pitch_width=68, use_synthetic=0, df_synthetic=None):
     """
     Iteratively calculates MxN xT value surface.
 
@@ -232,7 +251,7 @@ def xT_surface(df, successful_shot_events, failed_shot_events, successful_pass_e
     xT = np.zeros((w, l))
 
     print ('Calculating xG...')
-    xG = p_score_if_shoot(df, successful_shot_events, failed_shot_events, event_column_name, l, w, pitch_length=105, pitch_width=68)
+    xG = p_score_if_shoot(df, successful_shot_events, failed_shot_events, event_column_name, l, w, pitch_length=105, pitch_width=68, use_synthetic = 0, df_synthetic = None)
 
     print ('Calculating pShoot & pMove...')
     pS, pM = p_shoot_or_move(df, successful_shot_events, failed_shot_events, successful_pass_events, failed_pass_events, successful_dribble_events, failed_dribble_events, event_column_name, l, w, pitch_length=105, pitch_width=68)
