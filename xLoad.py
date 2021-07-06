@@ -131,7 +131,7 @@ def opta_infer_dribble_end_coords(df):
 
 def coords_in_metres(df, x1, x2, y1, y2, pitch_length = 105.0, pitch_width = 68.0):
     """
-    Convert co-ordinates from x in [0,100], y in [0, 100] to x' in [0, 105], y' in [0, 68]
+    Convert Opta co-ordinates from x in [0,100], y in [0, 100] to x' in [0, 105], y' in [0, 68]
     """
 
     df['x1_m'] = (df.x1 / 100.0) * pitch_length
@@ -144,6 +144,34 @@ def coords_in_metres(df, x1, x2, y1, y2, pitch_length = 105.0, pitch_width = 68.
                ,'minsPlayed', 'subIn', 'subOut','replacedReplacingPlayerId', 'booking'\
                ,'eventType', 'eventSubType','eventTypeId', 'x1', 'y1', 'x2', 'y2'\
                ,'gameTime', 'timeStamp','periodId', 'homeTeamName', 'homeTeamId', 'awayTeamName', 'awayTeamId','kickOffDateTime', 'minute', 'second', 'x1_m', 'y1_m', 'x2_m', 'y2_m']].copy()
+
+
+
+def wyscout_coords_in_metres(df_wyscout, start_x, end_x, start_y, end_y, pitch_length = 105.0, pitch_width = 68.0):
+    """
+    Convert Wyscout co-ordinates from x in [0,100], y in [100,0] (y inverted w.r.t. Opta) to x' in [0,105], y' in [0,68]
+    """
+
+    # 1) firstly, getting rid of erronous data where co-ords fall outside of the Wyscout range
+    df_wyscout = df_wyscout.loc[df_wyscout[start_y] <= 100].copy()
+    df_wyscout = df_wyscout.loc[df_wyscout['end_y'] <= 100].copy()
+
+    df_wyscout = df_wyscout.loc[df_wyscout[start_y] >= 0].copy()
+    df_wyscout = df_wyscout.loc[df_wyscout[end_y] >= 0].copy()
+
+    df_wyscout = df_wyscout.loc[df_wyscout[start_x] <= 100].copy()
+    df_wyscout = df_wyscout.loc[df_wyscout[end_x] <= 100].copy()
+
+    df_wyscout = df_wyscout.loc[df_wyscout[start_x] >= 0].copy()
+    df_wyscout = df_wyscout.loc[df_wyscout[end_x] >= 0].copy()
+
+    # 2) and then
+    df_wyscout['x1_m'] = (df_wyscout.start_x / 100.0) * pitch_length
+    df_wyscout['y1_m'] = ( (100.0 - df_wyscout.start_y) / 100.0) * pitch_width
+    df_wyscout['x2_m'] = (df_wyscout.end_x / 100.0) * pitch_length
+    df_wyscout['y2_m'] = ( (100.0 - df_wyscout.end_y) / 100.0) * pitch_width
+
+    return df_wyscout
 
 
 import pandas as pd
