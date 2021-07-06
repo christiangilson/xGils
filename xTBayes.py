@@ -72,7 +72,7 @@ def failed_shot_count_matrix(df, failed_shot_events, event_column_name, l=18, w 
     return miss_matrix
 
 
-def bayes_p_score_if_shoot(prior_successful_shot_matrix, data_successful_shot_matrix, prior_failed_shot_matrix, data_failed_shot_matrix, use_synthetic = 0, df_synthetic = None):
+def bayes_p_score_if_shoot(prior_successful_shot_matrix, data_successful_shot_matrix, prior_failed_shot_matrix, data_failed_shot_matrix, l=18, w=12, pitch_length = 105.0, pitch_width = 68.0, use_synthetic = 0, df_synthetic = None):
     """
     If synthetic NOT used:
     Takes in the events dataframe and extracts counts of shots and goals
@@ -91,7 +91,6 @@ def bayes_p_score_if_shoot(prior_successful_shot_matrix, data_successful_shot_ma
 
     # elif you're using synthetic counts
     else:
-        
         # querying synthetic shot dataframe to produce synthetic goal dataframe, and calculating synthetic success and failures matrix
         df_synthetic_successful_shots = df_synthetic.loc[df_synthetic['goal'] == 1].copy()
         df_synthetic_failed_shots = df_synthetic.loc[df_synthetic['goal'] == 0].copy()
@@ -180,20 +179,6 @@ def bayes_move_transition_matrices(df, successful_pass_events, failed_pass_event
     transition_matrix_denom[df_denom.z] = df_denom.total_z_counts
 
     return transition_matrix_counts, transition_matrix_denom
-
-
-"""
-## Bayesian Conjugate Updating: Beta-Binomial Analysis
-"""
-
-def posterior_bayes_mean(prior_success_counts, data_success_counts, prior_fail_counts, data_fail_counts):
-
-    posterior_alpha = prior_success_counts + data_success_counts
-    posterior_beta = prior_fail_counts + data_fail_counts
-
-    posterior_mean = xT.safe_divide(posterior_alpha, (posterior_alpha + posterior_beta))
-
-    return posterior_mean
 
 
 """
