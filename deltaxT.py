@@ -102,6 +102,7 @@ def plot_xT_pitch(df, events, filepath, transparent=True, teamOrPlayer='team', e
     return fig.savefig(filepath, transparent=transparent, dpi=300)
 
 
+
 def plot_xT_multi_pitch(df, events, lst_teams, lst_seasons, lst_cmaps, filepath, transparent=True, teamOrPlayer='team', eventCol='eventSubType', bins=(18,12), figsize=(18,18), fontsize=14, vmax_override=None, scatter=1):
     """
     Plotting an array of xT pitch's using the aggregated statistics from the team_xT_grid function.
