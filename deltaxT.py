@@ -49,7 +49,7 @@ def xT_grid(df, events, eventCol='eventSubType', bins=(18,12), exclCorners = 1):
     return (bs['statistic'], bs,  df_events)
 
 
-def plot_xT_pitch(df, events, teamOrPlayer='team', eventCol='eventSubType', bins=(18,12), figsize=(16,9), fontsize=14, vmax_override=None, cmap=cm.coolwarm, scatter=1):
+def plot_xT_pitch(df, events, filepath, transparent=True, teamOrPlayer='team', eventCol='eventSubType', bins=(18,12), figsize=(16,9), fontsize=14, vmax_override=None, cmap=cm.coolwarm, scatter=1):
     """
     Plotting an xT pitch using the aggregated statistics from the team_xT_grid function.
 
@@ -99,4 +99,70 @@ def plot_xT_pitch(df, events, teamOrPlayer='team', eventCol='eventSubType', bins
     elif teamOrPlayer == 'player':
         ax.set_title(f'{playerName} ({teamName}): {season}', x=0.5, y=0.98, fontsize=fontsize, color='black')
 
-    return
+    return fig.savefig(filepath, transparent=transparent, dpi=300)
+
+
+def plot_xT_multi_pitch(df, events, lst_teams, lst_seasons, lst_cmaps, filepath, transparent=True, teamOrPlayer='team', eventCol='eventSubType', bins=(18,12), figsize=(18,18), fontsize=14, vmax_override=None, scatter=1):
+    """
+    Plotting an array of xT pitch's using the aggregated statistics from the team_xT_grid function.
+
+    Optional argument to plot a scatter of the underlying events.
+    """
+
+    # creating an array of plotting metadata
+    numTeams = len(lst_teams)
+    numSeasons = len(lst_seasons)
+
+    ## plotting array
+    lst_plots = []
+    for teamId, cmap in zip(lst_teams, lst_cmaps):
+        for season in lst_seasons:
+            lst_plots.append((teamId,season,cmap))
+
+    pitch = Pitch(pitch_type='uefa', pitch_color='white', line_zorder=2, line_color='gray')
+    # creating numTeams x numSeasons set of pitches
+    fig, axs = pitch.draw(figsize=figsize, nrows=numTeams, ncols=numSeasons)
+
+    for ax, p in zip(axs.flat, lst_plots):
+
+        # unpacking plotting metadata
+        teamId, season, cmap = p
+
+        # getting team / season dataframe
+        df_plot = df.loc[((df['playerTeamId'] == teamId) & (df['season'] == season))]
+
+        # getting bin statistic bundle from team_xT_grid function
+        bs, bs_obj, df_events = xT_grid(df_plot, events, eventCol, bins)
+
+        #fig.patch.set_facecolor('white')
+
+        # setting min/max of the values
+        vmax = bs.max()
+        vmin = 0
+
+        # using a value override if specified in the function
+        if vmax_override != None:
+            vmax = vmax_override
+
+        # producing heatmap
+        hm = pitch.heatmap(bs_obj, ax=ax, cmap=cmap, edgecolors='white', vmin=vmin, vmax=vmax)
+
+        # optional extra to plot a scatter of the individual events
+        if scatter == 1:
+            sc = pitch.scatter(df_plot.x1_m, df_plot.y1_m, c='white', s=2, ax=ax, alpha=0.3)
+
+        # producing the colourbar to the right of the plot
+        team_cbar = fig.colorbar(hm, ax=ax)
+        team_cbar.set_label('xT', rotation=270, fontsize=fontsize)
+
+        # generating plot title
+        ## getting team name and season name from df_events dataframe
+        df_teams = produce_df_teams_ref(df)
+        teamName = df_teams.loc[df_teams['teamId'] == teamId].teamName.values[0]
+
+        if teamOrPlayer == 'team':
+            ax.set_title(f'{teamName}: {season}', x=0.5, y=0.98, fontsize=fontsize, color='black')
+        elif teamOrPlayer == 'player':
+            ax.set_title(f'{playerName} ({teamName}): {season}', x=0.5, y=0.98, fontsize=fontsize, color='black')
+
+    return fig.savefig(filepath, transparent=transparent, dpi=300)
