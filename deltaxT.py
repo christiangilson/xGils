@@ -22,7 +22,7 @@ def produce_df_matches_ref(df):
     Produces data frame of match reference data from events dataframe for the season of interest.
     """
 
-    return df[['matchId','homeTeamId','homeTeamName','awayTeamId','awayTeamName']].drop_duplicates().reset_index(drop=True).copy()
+    return df[['matchId','homeTeamId','awayTeamId']].drop_duplicates().reset_index(drop=True).copy()
 
 
 def xT_grid(df, events, eventCol='eventSubType', bins=(18,12), exclCorners = 1):
@@ -302,8 +302,8 @@ def plot_delta_xT_pitch(df, teamId, events, filepath, transparent=True, eventCol
     cbar.set_label('DxT', rotation=270, fontsize=fontsize-2)
 
     # plot title
-    df_matches = produce_df_matches_ref(df)
-    teamName = df_matches.loc[df_matches['homeTeamId'] == teamId, 'homeTeamName'].values[0]
+    df_teams = produce_df_teams_ref(df)
+    teamName = df_teams.loc[df_teams['teamId'] == teamId, 'teamName'].values[0]
     season = df.season.values[0]
 
     # set title
@@ -319,7 +319,7 @@ def plot_delta_xT_multi_pitch(df, events, lst_teams, lst_seasons, lst_cmaps, fil
     """
 
     # getting dataframe of match reference data (matchId | homeTeamId | homeTeamName | awayTeamId | awayTeamName)
-    df_matches = produce_df_matches_ref(df)
+    df_teams = produce_df_teams_ref(df)
 
     # creating an array of plotting metadata
     numTeams = len(lst_teams)
@@ -365,7 +365,7 @@ def plot_delta_xT_multi_pitch(df, events, lst_teams, lst_seasons, lst_cmaps, fil
         cbar.set_label('DxT', rotation=270, fontsize=fontsize-2)
 
         # plot title
-        teamName = df_matches.loc[df_matches['homeTeamId'] == teamId, 'homeTeamName'].values[0]
+        teamName = df_teams.loc[df_teams['teamId'] == teamId, 'teamName'].values[0]
 
         # set title
         ax.set_title(f'{teamName}: {season}', x=0.5, y=0.98, fontsize=fontsize, color='black')
