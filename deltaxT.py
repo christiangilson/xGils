@@ -91,7 +91,7 @@ def plot_xT_pitch(df, events, filepath, transparent=True, teamOrPlayer='team', e
 
     # producing the colourbar to the right of the plot
     team_cbar = fig.colorbar(hm, ax=ax)
-    team_cbar.set_label('xT', rotation=270, fontsize=fontsize)
+    team_cbar.set_label('xT', rotation=270, fontsize=fontsize-2)
 
     # generating plot title
     ## getting team name and season name from df_events dataframe
@@ -162,7 +162,7 @@ def plot_xT_multi_pitch(df, events, lst_teams, lst_seasons, lst_cmaps, filepath,
 
         # producing the colourbar to the right of the plot
         team_cbar = fig.colorbar(hm, ax=ax)
-        team_cbar.set_label('xT', rotation=270, fontsize=fontsize)
+        team_cbar.set_label('xT', rotation=270, fontsize=fontsize-2)
 
         # generating plot title
         ## getting team name and season name from df_events dataframe
@@ -293,10 +293,13 @@ def plot_delta_xT_pitch(df, teamId, events, filepath, transparent=True, eventCol
 
     # Delta xT heatmap
     hm = pitch.heatmap(bin_statistic_object, ax=ax, cmap=cm.coolwarm, edgecolors='white', vmin=vmin, vmax=vmax)
+    # inverting x-  and y- axes so it appears like it's the target team's defence
+    hm.axes.invert_yaxis()
+    hm.axes.invert_xaxis()
 
     # Delta xT = DxT colorbar
     cbar = fig.colorbar(hm, ax=ax)
-    cbar.set_label('DxT', rotation=270, fontsize=fontsize)
+    cbar.set_label('DxT', rotation=270, fontsize=fontsize-2)
 
     # plot title
     df_matches = produce_df_matches_ref(df)
@@ -353,10 +356,13 @@ def plot_delta_xT_multi_pitch(df, events, lst_teams, lst_seasons, lst_cmaps, fil
 
         # producing heatmap
         hm = pitch.heatmap(bin_statistic_object, ax=ax, cmap=cmap, edgecolors='white', vmin=vmin, vmax=vmax)
+        # inverting x-  and y- axes so it appears like it's the target team's defence
+        hm.axes.invert_yaxis()
+        hm.axes.invert_xaxis()
 
         # Delta xT = DxT colorbar
         cbar = fig.colorbar(hm, ax=ax)
-        cbar.set_label('DxT', rotation=270, fontsize=fontsize)
+        cbar.set_label('DxT', rotation=270, fontsize=fontsize-2)
 
         # plot title
         teamName = df_matches.loc[df_matches['homeTeamId'] == teamId, 'homeTeamName'].values[0]
