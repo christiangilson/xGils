@@ -183,8 +183,42 @@ def xG_contextual_feature_engineering(df):
        'kickOffDateTime', 'minute', 'second', 'x1_m', 'y1_m', 'x2_m', 'y2_m',
        'possessionTeamId', 'possessionSequenceIndex',
        'possessionStartTime', 'possessionTimeSec', 'playerPossessionTimeSec',
-       'goalDelta', 'numReds','xT']].copy()
+       'goalDelta', 'numReds','goalScoredFlag','xT']].copy()
 
 
-def xG_geometric_feature_engineering(df):
-    return df
+def xG_geometric_shot_feature_engineering(df):
+    """
+    Calculating angles and distances.
+
+    Intentionally not including data after the shot is taken (i.e. involving final shot position.)
+    """
+
+    # filtering shots
+    df_shots = df.loc[df['eventType'] == 'shot'].reset_index(drop=True).copy()
+
+    ## getting the x-dimension distance (and squared distance) to goal
+    df_shots['x_dist_goal'] = 105 - df_shots['x1_m']
+    df_shots['x_dist_goal_2'] = df_shots['x_dist_goal']**2
+
+    ## getting some central y stats and squared stats (same definitions as in David Sumpter's code from MSc Mathematical Modelling of Football course at Uppsala University)
+    df_shots['c1_m'] = abs(df_shots['y1_m'] - 34)
+    df_shots['c1_m_2'] = df_shots['c1_m']**2
+
+    ## getting distance to goal
+    df_shots['vec_x'] = df_shots['x_dist_goal']
+    df_shots['vec_y'] = 34 - df_shots['c1_m']
+    df_shots['D'] = np.sqrt(df_shots['vec_x']**2 + df_shots['vec_y']**2)
+    df_shots['Dsquared'] = df_shots.D**2
+    df_shots['Dcubed'] = df_shots.D**3
+
+    ## DQ step: getting rid of events where the vec_x = vec_y = 0 (look like data errors)
+    df_shots = df_shots.loc[~((df_shots['vec_x'] == 0) & (df_shots['vec_y'] == 0))].copy()
+
+    ## calculating passing angle in radians
+    df_shots['a'] = np.arctan(df_shots['vec_x'] / abs(df_shots['vec_y']))
+
+    ## calculating shooting angle from initial position
+    df_shots['aShooting'] = np.arctan(7.32 * df_shots['x_dist_goal'] / (df_shots['x_dist_goal']**2 + df_shots['c1_m']**2 - (7.32/2)**2))
+    df_shots['aShooting'] = df_shots.aShooting.apply(lambda x: x+np.pi if x<0 else x)
+
+    return df_shots
