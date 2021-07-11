@@ -2,6 +2,14 @@
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+
+from sklearn import metrics
+from sklearn.calibration import calibration_curve
+
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import seaborn
 
 
 def create_eventId(df):
@@ -221,4 +229,154 @@ def xG_geometric_shot_feature_engineering(df):
     df_shots['aShooting'] = np.arctan(7.32 * df_shots['x_dist_goal'] / (df_shots['x_dist_goal']**2 + df_shots['c1_m']**2 - (7.32/2)**2))
     df_shots['aShooting'] = df_shots.aShooting.apply(lambda x: x+np.pi if x<0 else x)
 
+
+    ## getting number of defensive players applying pressure to the ball
+    ## this takes a long  time to run...
+    # storing list of counts of pressures on shots
+    lst_pressureCountOnShot = []
+
+    # getting list of all shot eventId's
+    shot_eventIds = df_shots.eventId.values
+
+    # iterating through shots
+    for n, shot in enumerate(shot_eventIds):
+
+        if n % 1000 == 0:
+            print (f'Processed {n} shots out of {len(shot_eventIds)}')
+
+        # getting shot meta to query the full event dataframe with: matchId,  teamId, timestamp
+        matchId, teamId, timeStamp = df_shots.loc[df_shots['eventId'] == shot, ['matchId','playerTeamId','timeStamp']].values[0]
+
+        # producing a dataframe of pressures on each shot, where the pressure must be coming from a player on the other team to the one taking a shot
+        # and of course must be happening in the same match
+        # and has been recorded two seconds either side of the shot (this is the timedelta logic)
+        ## THIS IS A VERY EXPENSIVE QUERY TO RUN
+        df_shotPressure = df.loc[(df['eventSubType'] == 'Pressure on Shot') & (df['playerTeamId'] != teamId) & (df['matchId'] ==  matchId) &\
+                      (df['timeStamp'] > timeStamp - pd.Timedelta(2,'s')) & (df['timeStamp'] < timeStamp + pd.Timedelta(2,'s'))]
+
+        # and we set the pressureCountOnShot metric to simply be the count of the players that are applying pressure to the shot
+        lst_pressureCountOnShot.append(len(df_shotPressure))
+
+    # updating df_shots dataframe all at once
+    df_shots['pressureCountOnShot'] = lst_pressureCountOnShot
+
+
+    ## and finally generating a penalty flag (takes about a minute)
+    # storing  0/1 list of penalties
+    df_shots['penaltyFlag'] = 0
+
+    # getting subset of of all shot eventId's that could be penalties due to the location of the shot (92.925,34.0)
+    pen_eventIds = df_shots.loc[(df_shots['x1_m'] == 92.925) & (df_shots['y1_m'] == 34.000)].eventId.values
+
+    # iterating through shots
+    for shot in pen_eventIds:
+
+        # getting shot meta to query the full event dataframe with: matchId,  teamId, timestamp
+        matchId, teamId, timeStamp = df_shots.loc[df_shots['eventId'] == shot, ['matchId','playerTeamId','timeStamp']].values[0]
+
+        # producing a dataframe of pressures on each shot, where the pressure must be coming from a player on the other team to the one taking a shot
+        # and of course must be happening in the same match
+        # and has been recorded 5 minutes before the shot
+        df_penalty = df.loc[(df['playerTeamId'] != teamId) & (df['matchId'] ==  matchId) &\
+                      (df['timeStamp'] > timeStamp - pd.Timedelta(300,'s')) & (df['timeStamp'] < timeStamp) &\
+                      (df['eventSubType'].isin(['Conceded Penalty','Foul for Penalty']))]
+
+        # and we set the pressureCountOnShot metric to simply be the count of the players that are applying pressure to the shot
+        df_shots.loc[df_shots['eventId'] == shot, 'penaltyFlag'] = 1 if len(df_penalty) > 0 else 0
+
     return df_shots
+
+
+# applying basic, added, advanced, and synthetic models to test data
+def apply_xG_model_to_test(df_shots_test, models):
+    """
+    Applying the four different logistic regression models to produce four xG values
+    """
+    log_basic, log_added, log_adv, log_syn = models
+
+    print ('Applying models...')
+    df_shots_test['xG_basic'] = log_basic.predict(df_shots_test)
+    df_shots_test['xG_added'] = log_added.predict(df_shots_test)
+    df_shots_test['xG_adv'] = log_adv.predict(df_shots_test)
+    df_shots_test['xG_syn'] = log_syn.predict(df_shots_test)
+    print (f'Done applying {len(models)} models.')
+
+    return df_shots_test
+
+
+def plot_calibration_curve(df_shots_test, numBins=25, alpha=0.6, saveOutput=0, plotName='xG_calibration_plot'):
+    """
+    Calibration plots for xG models
+    """
+    fig = plt.figure(figsize=(10, 10))
+
+    # getting colourbline palette
+    palette = seaborn.color_palette('colorblind', 6).as_hex()
+
+    # Plotting perfect calibration (line y=x)
+    plt.plot([0, 1], [0, 1], 'k:', label='Perfectly Calibrated Model', alpha=alpha)
+
+    # FOUR calibration curves - Tricky to plot all four at a time, so just do a Simple Vs Advanced
+    ## 1) Simple Model
+    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_basic, n_bins=numBins)
+    plt.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Basic Model', alpha = alpha, lw=1, color=palette[4])
+
+    ## 2) Added Model
+    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_added, n_bins=numBins)
+    plt.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Added Features', alpha = alpha, lw=2, color=palette[2])
+
+    ## 3) Advanced Model: Canonical (Logit) Link function
+    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_adv, n_bins=numBins)
+    plt.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Advanced Features', alpha = alpha, lw=3, color=palette[1])
+
+    ## 4) Advanced Model: Using Synthetic data to train BUT NOT TEST
+    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_syn, n_bins=numBins)
+    plt.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Advanced Features + Synthetic Shots', alpha=alpha, lw=4, color=palette[0])
+
+    plt.ylabel('Fraction of Successful Shots', fontsize=18)
+    plt.xlabel('Mean xG', fontsize=18)
+
+    plt.ylim([-0.05, 1.05])
+    plt.xlim([-0.05, 1.05])
+
+    plt.legend(loc="lower right", fontsize=18)
+    #plt.title('Calibration Plot', fontsize=24)
+
+    plt.yticks(fontsize=14)
+    plt.xticks(fontsize=14)
+
+    plt.tight_layout()
+
+    if saveOutput == 1:
+        plt.savefig(f'/Users/christian/Desktop/University/Birkbeck MSc Applied Statistics/Project/Plots/xG Calibration/{plotName}.pdf', dpi=300, format='pdf', bbox_inches='tight')
+
+    return plt.show()
+
+
+def calculate_model_metrics(df_shots_test, xGtype='xG_adv', log_reg_decision_threshold = 0.65):
+    """
+    Applies Logistic Regression Decision Threshold (i.e. applying the model to attribute whether a pass would or would have not been successful)
+    And calculates a bunch of related metrics
+    """
+
+    df_shots_test['predictedSuccess'] = df_shots_test[xGtype].apply(lambda x: 1 if x > log_reg_decision_threshold else 0)
+
+    brierScore = metrics.brier_score_loss(df_shots_test.goalScoredFlag, df_shots_test[xGtype])
+
+    # precision = TRUE POSITIVE / (TRUE POSITIVE + FALSE POSITIVE)
+    # ratio of correctly positive observations / all predicted positive observations
+    precisionScore = metrics.precision_score(df_shots_test.goalScoredFlag, df_shots_test.predictedSuccess)
+
+    # recall = TRUE POSITIVE / (TRUE POSITIVE + FALSE NEGATIVE)
+    # ratio of correctly positive observations / all true positive observations (that were either correctly picked TP or missed FN)
+    recallScore = metrics.recall_score(df_shots_test.goalScoredFlag, df_shots_test.predictedSuccess)
+
+    # weighted average of precision and recall
+    f1Score = metrics.f1_score(df_shots_test.goalScoredFlag, df_shots_test.predictedSuccess)
+
+    AUCScore = metrics.roc_auc_score(df_shots_test.goalScoredFlag, df_shots_test.predictedSuccess)
+
+    # overall accuracy score: ratio of all correct over count of all observations
+    accuracyScore = metrics.accuracy_score(df_shots_test.goalScoredFlag, df_shots_test.predictedSuccess)
+
+    return print (f'Brier Score: {brierScore}\n\nPrecision Score: {precisionScore}\n\nRecall Score: {recallScore}\n\nF1 Score: {f1Score}\n\nAUC Score: {AUCScore}\n\nAccuracyScore: {accuracyScore}')
