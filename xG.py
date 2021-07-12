@@ -287,6 +287,45 @@ def xG_geometric_shot_feature_engineering(df):
     return df_shots
 
 
+def xG_geometric_synthetic_shot_feature_engineering(df):
+    """
+    Calculating angles and distances.
+
+    Intentionally not including data after the shot is taken (i.e. involving final shot position.)
+    """
+
+    # filtering shots
+    df_shots = df.loc[df['eventType'] == 'shot'].reset_index(drop=True).copy()
+
+    ## getting the x-dimension distance (and squared distance) to goal
+    df_shots['x_dist_goal'] = 105 - df_shots['x1_m']
+    df_shots['x_dist_goal_2'] = df_shots['x_dist_goal']**2
+
+    ## getting some central y stats and squared stats (same definitions as in David Sumpter's code from MSc Mathematical Modelling of Football course at Uppsala University)
+    df_shots['c1_m'] = abs(df_shots['y1_m'] - 34)
+    df_shots['c1_m_2'] = df_shots['c1_m']**2
+
+    ## getting distance to goal
+    df_shots['vec_x'] = df_shots['x_dist_goal']
+    df_shots['vec_y'] = 34 - df_shots['c1_m']
+    df_shots['D'] = np.sqrt(df_shots['vec_x']**2 + df_shots['vec_y']**2)
+    df_shots['Dsquared'] = df_shots.D**2
+    df_shots['Dcubed'] = df_shots.D**3
+
+    ## DQ step: getting rid of events where the vec_x = vec_y = 0 (look like data errors)
+    df_shots = df_shots.loc[~((df_shots['vec_x'] == 0) & (df_shots['vec_y'] == 0))].copy()
+
+    ## calculating passing angle in radians
+    df_shots['a'] = np.arctan(df_shots['vec_x'] / abs(df_shots['vec_y']))
+
+    ## calculating shooting angle from initial position
+    df_shots['aShooting'] = np.arctan(7.32 * df_shots['x_dist_goal'] / (df_shots['x_dist_goal']**2 + df_shots['c1_m']**2 - (7.32/2)**2))
+    df_shots['aShooting'] = df_shots.aShooting.apply(lambda x: x+np.pi if x<0 else x)
+
+    return df_shots
+
+
+
 # applying basic, added, advanced, and synthetic models to test data
 def apply_xG_model_to_test(df_shots_test, models):
     """
@@ -308,42 +347,57 @@ def plot_calibration_curve(df_shots_test, numBins=25, alpha=0.6, saveOutput=0, p
     """
     Calibration plots for xG models
     """
-    fig = plt.figure(figsize=(10, 10))
+    fig = plt.figure(figsize=(10, 15))
+
+    # splitting figure into two subplots
+    gs = fig.add_gridspec(ncols=1, nrows=2, height_ratios=(2/3, 1/3))
+
+    # defining axes of subplots
+    ax1 = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1])
 
     # getting colourbline palette
     palette = seaborn.color_palette('colorblind', 6).as_hex()
 
     # Plotting perfect calibration (line y=x)
-    plt.plot([0, 1], [0, 1], 'k:', label='Perfectly Calibrated Model', alpha=alpha)
+    ax1.plot([0, 1], [0, 1], 'k:', label='Perfectly Calibrated Model', alpha=alpha)
 
     # FOUR calibration curves - Tricky to plot all four at a time, so just do a Simple Vs Advanced
     ## 1) Simple Model
     fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_basic, n_bins=numBins)
-    plt.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Basic Model', alpha = alpha, lw=1, color=palette[4])
+    ax1.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Basic Model', alpha = alpha, lw=1, color=palette[4])
 
     ## 2) Added Model
     fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_added, n_bins=numBins)
-    plt.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Added Features', alpha = alpha, lw=2, color=palette[2])
+    ax1.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Added Features', alpha = alpha, lw=2, color=palette[2])
 
     ## 3) Advanced Model: Canonical (Logit) Link function
     fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_adv, n_bins=numBins)
-    plt.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Advanced Features', alpha = alpha, lw=3, color=palette[1])
+    ax1.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Advanced Features', alpha = alpha, lw=3, color=palette[1])
 
     ## 4) Advanced Model: Using Synthetic data to train BUT NOT TEST
     fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_syn, n_bins=numBins)
-    plt.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Advanced Features + Synthetic Shots', alpha=alpha, lw=4, color=palette[0])
+    ax1.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Advanced Features + Synthetic Shots', alpha=alpha, lw=4, color=palette[0])
 
-    plt.ylabel('Fraction of Successful Shots', fontsize=18)
-    plt.xlabel('Mean xG', fontsize=18)
+    ax1.set_title('Calibration Plot', fontsize=20, pad=10)
+    ax1.set_ylabel('Fraction of Successful Test Shots', fontsize=16)
+    ax1.set_xlabel('Mean xG', fontsize=16)
 
-    plt.ylim([-0.05, 1.05])
-    plt.xlim([-0.05, 1.05])
+    ax1.set_ylim([-0.05, 1.05])
+    ax1.set_xlim([-0.05, 1.05])
 
-    plt.legend(loc="lower right", fontsize=18)
-    #plt.title('Calibration Plot', fontsize=24)
+    ax1.legend(loc="lower right", fontsize=16)
 
-    plt.yticks(fontsize=14)
-    plt.xticks(fontsize=14)
+    ax1.tick_params(labelsize=16)
+
+    # now plotting histogram
+    seaborn.distplot(df_shots_test.xG_syn, color=palette[0], label='Advanced Features + Synthetic Shots', kde=False, ax=ax2)
+
+    ax2.set_title('Distribution of xG Test Predictions (Real Shots Only)', fontsize=20, pad=10)
+    ax2.set_ylabel('Number of Test Shots', fontsize=16)
+    ax2.set_xlabel('Predicted xG', fontsize=16)
+    ax2.tick_params(labelsize=16)
+    ax2.legend(fontsize=16)
 
     plt.tight_layout()
 
