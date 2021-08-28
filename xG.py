@@ -331,19 +331,20 @@ def apply_xG_model_to_test(df_shots_test, models):
     """
     Applying the four different logistic regression models to produce four xG values
     """
-    log_basic, log_added, log_adv, log_syn = models
+    log_basic, log_added, log_adv, log_syn, log_adv_on_syn = models
 
     print ('Applying models...')
     df_shots_test['xG_basic'] = log_basic.predict(df_shots_test)
     df_shots_test['xG_added'] = log_added.predict(df_shots_test)
     df_shots_test['xG_adv'] = log_adv.predict(df_shots_test)
     df_shots_test['xG_syn'] = log_syn.predict(df_shots_test)
+    df_shots_test['xG_adv_on_syn'] = log_adv_on_syn.predict(df_shots_test)
     print (f'Done applying {len(models)} models.')
 
     return df_shots_test
 
 
-def plot_calibration_curve(df_shots_test, numBins=25, alpha=0.6, saveOutput=0, plotName='xG_calibration_plot'):
+def plot_calibration_curve(df_shots_test, numBins=25, alpha=0.6, saveOutput=0, plotName='xG_calibration_plot', calibrationType='uniform'):
     """
     Calibration plots for xG models
     """
@@ -364,19 +365,19 @@ def plot_calibration_curve(df_shots_test, numBins=25, alpha=0.6, saveOutput=0, p
 
     # FOUR calibration curves - Tricky to plot all four at a time, so just do a Simple Vs Advanced
     ## 1) Simple Model
-    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_basic, n_bins=numBins)
+    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_basic, n_bins=numBins, strategy=calibrationType)
     ax1.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Basic Model', alpha = alpha, lw=1, color=palette[4])
 
     ## 2) Added Model
-    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_added, n_bins=numBins)
+    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_added, n_bins=numBins, strategy=calibrationType)
     ax1.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Added Features', alpha = alpha, lw=2, color=palette[2])
 
     ## 3) Advanced Model: Canonical (Logit) Link function
-    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_adv, n_bins=numBins)
+    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_adv, n_bins=numBins, strategy=calibrationType)
     ax1.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Advanced Features', alpha = alpha, lw=3, color=palette[1])
 
     ## 4) Advanced Model: Using Synthetic data to train BUT NOT TEST
-    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_syn, n_bins=numBins)
+    fraction_of_positives, mean_predicted_value = calibration_curve(df_shots_test.goalScoredFlag, df_shots_test.xG_syn, n_bins=numBins, strategy=calibrationType)
     ax1.plot(mean_predicted_value, fraction_of_positives, marker="o", markersize=10, label='Advanced Features + Synthetic Shots', alpha=alpha, lw=4, color=palette[0])
 
     ax1.set_title('Calibration Plot', fontsize=20, pad=10)
@@ -407,7 +408,7 @@ def plot_calibration_curve(df_shots_test, numBins=25, alpha=0.6, saveOutput=0, p
     return plt.show()
 
 
-def calculate_model_metrics(df_shots_test, xGtype='xG_adv', log_reg_decision_threshold = 0.65):
+def calculate_model_metrics(df_shots_test, xGtype='xG_adv', log_reg_decision_threshold = 0.5):
     """
     Applies Logistic Regression Decision Threshold (i.e. applying the model to attribute whether a pass would or would have not been successful)
     And calculates a bunch of related metrics
@@ -416,6 +417,9 @@ def calculate_model_metrics(df_shots_test, xGtype='xG_adv', log_reg_decision_thr
     df_shots_test['predictedSuccess'] = df_shots_test[xGtype].apply(lambda x: 1 if x > log_reg_decision_threshold else 0)
 
     brierScore = metrics.brier_score_loss(df_shots_test.goalScoredFlag, df_shots_test[xGtype])
+
+    # strongly advised by https://github.com/CleKraus/soccer_analytics/blob/master/notebooks/expected_goal_model_lr.ipynb
+    logLossScore = metrics.log_loss(df_shots_test.goalScoredFlag, df_shots_test[xGtype])
 
     # precision = TRUE POSITIVE / (TRUE POSITIVE + FALSE POSITIVE)
     # ratio of correctly positive observations / all predicted positive observations
@@ -428,9 +432,9 @@ def calculate_model_metrics(df_shots_test, xGtype='xG_adv', log_reg_decision_thr
     # weighted average of precision and recall
     f1Score = metrics.f1_score(df_shots_test.goalScoredFlag, df_shots_test.predictedSuccess)
 
-    AUCScore = metrics.roc_auc_score(df_shots_test.goalScoredFlag, df_shots_test.predictedSuccess)
+    AUCScore = metrics.roc_auc_score(df_shots_test.goalScoredFlag, df_shots_test[xGtype])
 
     # overall accuracy score: ratio of all correct over count of all observations
     accuracyScore = metrics.accuracy_score(df_shots_test.goalScoredFlag, df_shots_test.predictedSuccess)
 
-    return print (f'Brier Score: {brierScore}\n\nPrecision Score: {precisionScore}\n\nRecall Score: {recallScore}\n\nF1 Score: {f1Score}\n\nAUC Score: {AUCScore}\n\nAccuracyScore: {accuracyScore}')
+    return print (f'LogLoss Score: {logLossScore}\n\nBrier Score: {brierScore}\n\nPrecision Score: {precisionScore}\n\nRecall Score: {recallScore}\n\nF1 Score: {f1Score}\n\nAUC Score: {AUCScore}\n\nAccuracyScore: {accuracyScore}')
